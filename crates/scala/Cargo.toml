@@ -1,0 +1,21 @@
+[package]
+name = "wit-bindgen-scala"
+authors = ["Rikito Taniguchi <rikiriki1238@gmail.com>"]
+version = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+homepage = "https://github.com/bytecodealliance/wit-bindgen"
+description = """
+Scala bindings generator for WIT and the component model, targeting scala-wasm runtime.
+"""
+
+[dependencies]
+wit-bindgen-core = { workspace = true }
+anyhow = { workspace = true }
+heck = { workspace = true }
+clap = { workspace = true, optional = true }
+
+[features]
+clap = ["dep:clap", "wit-bindgen-core/clap"]
