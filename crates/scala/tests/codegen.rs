@@ -176,6 +176,10 @@ fn test_import_export() {
     // Export should be abstract (no native marker)
     assert!(!export_content.contains("= scala.scalajs.wit.native"));
     assert!(export_content.contains("@scala.scalajs.wit.annotation.WitExport"));
+
+    // Export should have package object structure with trait inside
+    assert!(export_content.contains("package object math"));
+    assert!(export_content.contains("trait Math"));
 }
 
 #[test]

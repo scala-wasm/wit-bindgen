@@ -19,19 +19,22 @@ fn test_render_resource_method() {
     });
 
     let func = Function {
-        name: "read".to_string(),
+        name: "[method]dummy-resource.read".to_string(),
         kind: FunctionKind::Method(dummy_resource_id),
-        params: vec![("length".to_string(), Type::U32)],
+        params: vec![
+            ("self".to_string(), Type::Id(dummy_resource_id)),
+            ("length".to_string(), Type::U32),
+        ],
         result: Some(Type::Bool),
         docs: Default::default(),
         stability: Default::default(),
     };
 
-    let result = render_resource_method(&mut ctx, &resolve, "read", &func);
+    let result = render_resource_method(&mut ctx, &resolve, &func);
 
     assert!(
         result
-            .contains("@scala.scalajs.wit.annotation.WitResourceMethod(\"read\")")
+            .contains("@scala.scalajs.wit.annotation.WitResourceMethod(\"[method]dummy-resource.read\")")
     );
     assert!(result.contains("def read("));
     assert!(result.contains("length: scala.scalajs.wit.unsigned.UInt"));

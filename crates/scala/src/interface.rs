@@ -31,13 +31,8 @@ pub fn render_interface(
     writeln!(&mut output, "package {}", package_path).unwrap();
     writeln!(&mut output).unwrap();
 
-    // For imports: use package object; for exports: use trait
-    if is_import {
-        writeln!(&mut output, "package object {} {{", package_name).unwrap();
-    } else {
-        writeln!(&mut output, "{}", annotations::component_export_interface()).unwrap();
-        writeln!(&mut output, "trait {} {{", type_name).unwrap();
-    }
+    // Use package object for both imports and exports
+    writeln!(&mut output, "package object {} {{", package_name).unwrap();
     writeln!(&mut output).unwrap();
 
     // Generate type definitions
@@ -116,7 +111,8 @@ pub fn render_interface(
         generated_functions.push((func_name.clone(), func_code));
     }
 
-    if !generated_functions.is_empty() {
+    // For imports: generate functions inside package object, then close it
+    if is_import && !generated_functions.is_empty() {
         writeln!(&mut output, "  // Functions").unwrap();
         for (_name, func_code) in &generated_functions {
             for line in func_code.lines() {
@@ -130,7 +126,38 @@ pub fn render_interface(
         }
     }
 
+    // Close the package object
     writeln!(&mut output, "}}").unwrap();
+
+    // For exports: create a trait at package level to hold functions
+    if !is_import && !generated_functions.is_empty() {
+        writeln!(&mut output).unwrap();
+        writeln!(&mut output, "// Export interface").unwrap();
+        writeln!(&mut output, "{}", annotations::component_export_interface()).unwrap();
+        writeln!(&mut output, "trait {} {{", type_name).unwrap();
+        writeln!(&mut output).unwrap();
+
+        // Import types from package object if there are any type definitions
+        if !generated_types.is_empty() {
+            writeln!(&mut output, "  import {}._", package_name).unwrap();
+            writeln!(&mut output).unwrap();
+        }
+
+        // Generate functions inside trait (2-space indentation)
+        writeln!(&mut output, "  // Functions").unwrap();
+        for (_name, func_code) in &generated_functions {
+            for line in func_code.lines() {
+                if line.is_empty() {
+                    writeln!(&mut output).unwrap();
+                } else {
+                    writeln!(&mut output, "  {}", line).unwrap();
+                }
+            }
+            writeln!(&mut output).unwrap();
+        }
+
+        writeln!(&mut output, "}}").unwrap();  // Close trait
+    }
 
     output
 }

@@ -45,7 +45,7 @@ pub fn render_imported_resource(
         for (_func_key, func) in &iface.functions {
             if let FunctionKind::Method(method_resource_id) = func.kind {
                 if method_resource_id == resource_id {
-                    let method = render_resource_method(ctx, resolve, &func.name, func);
+                    let method = render_resource_method(ctx, resolve, func);
                     write!(&mut output, "{}", method).unwrap();
                 }
             }
@@ -73,7 +73,7 @@ pub fn render_imported_resource(
                 }
                 FunctionKind::Static(static_resource_id) if static_resource_id == resource_id => {
                     let static_method =
-                        render_resource_static_method(ctx, resolve, &func.name, func);
+                        render_resource_static_method(ctx, resolve, func);
                     write!(&mut output, "{}", static_method).unwrap();
                 }
                 _ => {}
@@ -90,10 +90,9 @@ pub fn render_imported_resource(
 pub fn render_resource_method(
     ctx: &mut ScalaContext,
     resolve: &Resolve,
-    wit_name: &str,
     func: &Function,
 ) -> String {
-    let method_name = ctx.to_camel_case(wit_name);
+    let method_name = ctx.to_camel_case(func.item_name());
     let mut output = String::new();
 
     // Generate scaladoc if docs exist (with 2-space indentation for trait body)
@@ -105,13 +104,19 @@ pub fn render_resource_method(
     writeln!(
         &mut output,
         "  {}",
-        annotations::component_resource_method(wit_name)
+        annotations::component_resource_method(&func.name)
     )
     .unwrap();
     write!(&mut output, "  def {}(", method_name).unwrap();
 
-    // Render parameters
-    for (i, (param_name, param_ty)) in func.params.iter().enumerate() {
+    // Render parameters (skip first parameter which is 'self' for instance methods)
+    let params_to_render = if func.params.is_empty() {
+        &func.params[..]
+    } else {
+        &func.params[1..]
+    };
+
+    for (i, (param_name, param_ty)) in params_to_render.iter().enumerate() {
         if i > 0 {
             write!(&mut output, ", ").unwrap();
         }
@@ -179,10 +184,9 @@ pub fn render_resource_constructor(
 fn render_resource_static_method(
     ctx: &mut ScalaContext,
     resolve: &Resolve,
-    wit_name: &str,
     func: &Function,
 ) -> String {
-    let method_name = ctx.to_camel_case(wit_name);
+    let method_name = ctx.to_camel_case(func.item_name());
     let mut output = String::new();
 
     // Generate scaladoc if docs exist (with 2-space indentation for companion object body)
@@ -194,7 +198,7 @@ fn render_resource_static_method(
     writeln!(
         &mut output,
         "  {}",
-        annotations::component_resource_static_method(wit_name)
+        annotations::component_resource_static_method(&func.name)
     )
     .unwrap();
     write!(&mut output, "  def {}(", method_name).unwrap();
