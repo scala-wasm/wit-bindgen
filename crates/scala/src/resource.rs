@@ -104,7 +104,7 @@ pub fn render_resource_method(
     writeln!(
         &mut output,
         "  {}",
-        annotations::component_resource_method(&func.name)
+        annotations::component_resource_method(func.item_name())
     )
     .unwrap();
     write!(&mut output, "  def {}(", method_name).unwrap();
@@ -198,7 +198,7 @@ fn render_resource_static_method(
     writeln!(
         &mut output,
         "  {}",
-        annotations::component_resource_static_method(&func.name)
+        annotations::component_resource_static_method(func.item_name())
     )
     .unwrap();
     write!(&mut output, "  def {}(", method_name).unwrap();

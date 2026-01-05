@@ -34,7 +34,7 @@ fn test_render_resource_method() {
 
     assert!(
         result
-            .contains("@scala.scalajs.wit.annotation.WitResourceMethod(\"[method]dummy-resource.read\")")
+            .contains("@scala.scalajs.wit.annotation.WitResourceMethod(\"read\")")
     );
     assert!(result.contains("def read("));
     assert!(result.contains("length: scala.scalajs.wit.unsigned.UInt"));
