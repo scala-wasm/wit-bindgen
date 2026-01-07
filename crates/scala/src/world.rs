@@ -76,14 +76,14 @@ pub fn render_world(
     }
 
     // Generate world-level functions
-    // According to wasm-tools convention:
-    // - Imports use "$root" as the module name
-    // - Exports use "$root" as well (the runtime will map to bare names)
+    // World-level imports use "$root" as the module name
+    // World-level exports use empty string "" for bare exports like (export "function-name")
     if !funcs.is_empty() {
         has_content = true;
         writeln!(&mut output, "  // World-level functions").unwrap();
+        let namespace = if is_import { "$root" } else { "" };
         for (_func_name, func) in funcs {
-            let func_code = ctx.render_function(resolve, func, is_import, "$root");
+            let func_code = ctx.render_function(resolve, func, is_import, namespace);
             for line in func_code.lines() {
                 if line.is_empty() {
                     writeln!(&mut output).unwrap();
