@@ -465,9 +465,13 @@ impl ScalaContext {
         )
     }
 
-    /// Escape Scala keywords by wrapping them in backticks.
+    /// Escape Scala keywords and java.lang.Object methods.
+    /// - Scala keywords/reserved words: wrap in backticks
+    /// - java.lang.Object methods: append underscore suffix (backticks don't prevent overriding)
     pub fn escape_keyword(&self, name: &str) -> String {
-        if self.keywords.is_keyword(name) {
+        if self.keywords.is_object_method(name) {
+            format!("{}_", name)
+        } else if self.keywords.is_keyword(name) {
             format!("`{}`", name)
         } else {
             name.to_string()
@@ -548,6 +552,7 @@ impl ScalaContext {
 /// Scala keywords that need to be escaped.
 struct ScalaKeywords {
     keywords: HashSet<&'static str>,
+    object_methods: HashSet<&'static str>,
 }
 
 impl ScalaKeywords {
@@ -623,7 +628,13 @@ impl ScalaKeywords {
             ">:",
             "#",
             "@",
-            // Common method names that might conflict
+        ]);
+
+        let mut object_methods = HashSet::new();
+        // java.lang.Object methods that conflict even with backticks
+        // These need underscore suffix like other languages binding (Rust, C/C++, and Moonbit)
+        // because backticks don't prevent overriding.
+        object_methods.extend([
             "equals",
             "hashCode",
             "toString",
@@ -635,10 +646,14 @@ impl ScalaKeywords {
             "getClass",
         ]);
 
-        Self { keywords }
+        Self { keywords, object_methods }
     }
 
     fn is_keyword(&self, name: &str) -> bool {
         self.keywords.contains(name)
+    }
+
+    fn is_object_method(&self, name: &str) -> bool {
+        self.object_methods.contains(name)
     }
 }
