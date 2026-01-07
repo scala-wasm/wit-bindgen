@@ -2,7 +2,7 @@
 ///
 /// Worlds can have top-level imports and exports that are not part of
 /// any interface. These are generated in separate world files.
-use crate::ScalaContext;
+use crate::{ScalaContext, annotations};
 use std::fmt::Write as _;
 use wit_bindgen_core::wit_parser::*;
 
@@ -12,21 +12,29 @@ pub fn render_world(
     resolve: &Resolve,
     world_id: WorldId,
     is_import: bool,
+    funcs: &[(String, Function)],
 ) -> Option<String> {
     let world = &resolve.worlds[world_id];
-    let world_name = &world.name;
-    let package_name = ctx.to_snake_case(world_name);
+    let _world_name = &world.name;
 
     let mut has_content = false;
     let mut output = String::new();
 
     // Determine package path
-    let package_path = get_world_package_path(ctx, world_name, is_import);
+    let package_path = get_world_package_path(ctx, is_import);
     writeln!(&mut output, "package {}", package_path).unwrap();
     writeln!(&mut output).unwrap();
 
-    writeln!(&mut output, "package object {} {{", package_name).unwrap();
-    writeln!(&mut output).unwrap();
+    if is_import {
+        // For imports, use package object root
+        writeln!(&mut output, "package object root {{").unwrap();
+        writeln!(&mut output).unwrap();
+    } else {
+        // For exports, use trait Root with @WitExportInterface annotation
+        writeln!(&mut output, "{}", annotations::component_export_interface()).unwrap();
+        writeln!(&mut output, "trait Root {{").unwrap();
+        writeln!(&mut output).unwrap();
+    }
 
     // Generate top-level types
     if is_import {
@@ -67,34 +75,54 @@ pub fn render_world(
         }
     }
 
+    // Generate world-level functions
+    // According to wasm-tools convention:
+    // - Imports use "$root" as the module name
+    // - Exports use "$root" as well (the runtime will map to bare names)
+    if !funcs.is_empty() {
+        has_content = true;
+        writeln!(&mut output, "  // World-level functions").unwrap();
+        for (_func_name, func) in funcs {
+            let func_code = ctx.render_function(resolve, func, is_import, "$root");
+            for line in func_code.lines() {
+                if line.is_empty() {
+                    writeln!(&mut output).unwrap();
+                } else {
+                    writeln!(&mut output, "  {}", line).unwrap();
+                }
+            }
+            writeln!(&mut output).unwrap();
+        }
+    }
+
     writeln!(&mut output, "}}").unwrap();
 
     if has_content { Some(output) } else { None }
 }
 
 /// Get the package path for a world.
-pub fn get_world_package_path(ctx: &ScalaContext, world_name: &str, is_import: bool) -> String {
+pub fn get_world_package_path(ctx: &ScalaContext, is_import: bool) -> String {
     let mut segments = ctx.base_package_segments();
 
     if !is_import {
         segments.push("exports".to_string());
     }
-
-    segments.push(ctx.to_snake_case(world_name));
 
     segments.join(".")
 }
 
 /// Get the file path for a world file.
-pub fn get_world_file_path(ctx: &ScalaContext, world_name: &str, is_import: bool) -> String {
+pub fn get_world_file_path(ctx: &ScalaContext, is_import: bool) -> String {
     let mut segments = ctx.base_package_segments();
 
     if !is_import {
         segments.push("exports".to_string());
     }
 
-    segments.push(ctx.to_snake_case(world_name));
-
     let path = segments.join("/");
-    format!("{}/package.scala", path)
+    if is_import {
+        format!("{}/package.scala", path)
+    } else {
+        format!("{}/Root.scala", path)
+    }
 }

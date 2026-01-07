@@ -34,8 +34,8 @@ pub struct Scala {
     context: ScalaContext,
     imports: HashSet<InterfaceId>,
     exports: HashSet<InterfaceId>,
-    has_world_imports: bool,
-    has_world_exports: bool,
+    world_import_funcs: Vec<(String, Function)>,
+    world_export_funcs: Vec<(String, Function)>,
 }
 
 impl Scala {
@@ -44,8 +44,8 @@ impl Scala {
             context: ScalaContext::new(&opts),
             imports: HashSet::new(),
             exports: HashSet::new(),
-            has_world_imports: false,
-            has_world_exports: false,
+            world_import_funcs: Vec::new(),
+            world_export_funcs: Vec::new(),
         }
     }
 }
@@ -120,9 +120,8 @@ impl WorldGenerator for Scala {
         funcs: &[(&str, &Function)],
         _files: &mut Files,
     ) {
-        // Mark that we have world-level imports (functions or types)
-        if !funcs.is_empty() {
-            self.has_world_imports = true;
+        for (name, func) in funcs {
+            self.world_import_funcs.push((name.to_string(), (*func).clone()));
         }
     }
 
@@ -130,13 +129,10 @@ impl WorldGenerator for Scala {
         &mut self,
         _resolve: &Resolve,
         _world: WorldId,
-        types: &[(&str, TypeId)],
+        _types: &[(&str, TypeId)],
         _files: &mut Files,
     ) {
-        // Mark that we have world-level imports (functions or types)
-        if !types.is_empty() {
-            self.has_world_imports = true;
-        }
+        // World-level types are handled in finish()
     }
 
     fn export_interface(
@@ -204,41 +200,45 @@ impl WorldGenerator for Scala {
         funcs: &[(&str, &Function)],
         _files: &mut Files,
     ) -> Result<()> {
-        // Mark that we have world-level exports (functions or types)
-        if !funcs.is_empty() {
-            self.has_world_exports = true;
+        for (name, func) in funcs {
+            self.world_export_funcs.push((name.to_string(), (*func).clone()));
         }
         Ok(())
     }
 
     fn finish(&mut self, resolve: &Resolve, world_id: WorldId, files: &mut Files) -> Result<()> {
         let world = &resolve.worlds[world_id];
-        let world_name = &world.name;
         let mut generated_count = self.imports.len() + self.exports.len();
 
-        // Generate world-level import file if there are world-level imports
-        if self.has_world_imports {
+        let has_world_imports = !self.world_import_funcs.is_empty()
+            || world.imports.values().any(|item| matches!(item, WorldItem::Type(_)));
+
+        if has_world_imports {
             if let Some(content) = world::render_world(
                 &mut self.context,
                 resolve,
                 world_id,
                 true, // is_import
+                &self.world_import_funcs,
             ) {
-                let file_path = world::get_world_file_path(&self.context, world_name, true);
+                let file_path = world::get_world_file_path(&self.context, true);
                 files.push(&file_path, content.as_bytes());
                 generated_count += 1;
             }
         }
 
-        // Generate world-level export file if there are world-level exports
-        if self.has_world_exports {
+        let has_world_exports = !self.world_export_funcs.is_empty()
+            || world.exports.values().any(|item| matches!(item, WorldItem::Type(_)));
+
+        if has_world_exports {
             if let Some(content) = world::render_world(
                 &mut self.context,
                 resolve,
                 world_id,
                 false, // is_import = false for exports
+                &self.world_export_funcs,
             ) {
-                let file_path = world::get_world_file_path(&self.context, world_name, false);
+                let file_path = world::get_world_file_path(&self.context, false);
                 files.push(&file_path, content.as_bytes());
                 generated_count += 1;
             }

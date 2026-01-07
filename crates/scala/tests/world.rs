@@ -8,8 +8,8 @@ fn test_get_world_package_path_import() {
         binding_root: None,
     });
 
-    let path = get_world_package_path(&ctx, "my-world", true);
-    assert_eq!(path, "com.example.my_world");
+    let path = get_world_package_path(&ctx, true);
+    assert_eq!(path, "com.example");
 }
 
 #[test]
@@ -19,8 +19,8 @@ fn test_get_world_package_path_export() {
         binding_root: None,
     });
 
-    let path = get_world_package_path(&ctx, "my-world", false);
-    assert_eq!(path, "com.example.exports.my_world");
+    let path = get_world_package_path(&ctx, false);
+    assert_eq!(path, "com.example.exports");
 }
 
 #[test]
@@ -30,8 +30,8 @@ fn test_get_world_file_path_import() {
         binding_root: None,
     });
 
-    let path = get_world_file_path(&ctx, "my-world", true);
-    assert_eq!(path, "com/example/my_world/package.scala");
+    let path = get_world_file_path(&ctx, true);
+    assert_eq!(path, "com/example/package.scala");
 }
 
 #[test]
@@ -41,6 +41,6 @@ fn test_get_world_file_path_export() {
         binding_root: None,
     });
 
-    let path = get_world_file_path(&ctx, "my-world", false);
-    assert_eq!(path, "com/example/exports/my_world/package.scala");
+    let path = get_world_file_path(&ctx, false);
+    assert_eq!(path, "com/example/exports/Root.scala");
 }
