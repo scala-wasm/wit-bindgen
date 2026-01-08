@@ -45,7 +45,7 @@ fn test_simple_types() {
     let scala_content = std::str::from_utf8(contents[0].1).unwrap();
 
     assert!(scala_content.contains("package com.example.test"));
-    assert!(scala_content.contains("case class Point"));
+    assert!(scala_content.contains("final class Point"));
     assert!(scala_content.contains("def add"));
     assert!(scala_content.contains("@scala.scalajs.wit.annotation.WitImport"));
 }
@@ -204,7 +204,7 @@ fn test_flags() {
     let contents: Vec<_> = files.iter().collect();
     let scala_content = std::str::from_utf8(contents[0].1).unwrap();
 
-    assert!(scala_content.contains("case class FilePerms"));
+    assert!(scala_content.contains("final class FilePerms"));
     assert!(scala_content.contains("@scala.scalajs.wit.annotation.WitFlags"));
     assert!(scala_content.contains("val read ="));
     assert!(scala_content.contains("val write ="));
