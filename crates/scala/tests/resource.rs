@@ -7,6 +7,7 @@ fn test_render_resource_method() {
     let mut ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let mut resolve = Resolve::default();
@@ -47,6 +48,7 @@ fn test_render_resource_constructor() {
     let mut ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let mut resolve = Resolve::default();

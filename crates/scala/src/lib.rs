@@ -21,6 +21,16 @@ pub struct Opts {
     /// Output directory for bindings
     #[cfg_attr(feature = "clap", arg(long))]
     pub binding_root: Option<String>,
+
+    /// Generate unapply methods for pattern matching
+    #[cfg_attr(feature = "clap", arg(
+        long,
+        default_value = "true",
+        default_missing_value = "true",
+        num_args = 0..=1,
+        require_equals = true,
+    ))]
+    pub generate_unapply: bool,
 }
 
 impl Opts {

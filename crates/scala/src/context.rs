@@ -231,6 +231,117 @@ impl ScalaContext {
         }
     }
 
+    /// Generate equals method for a class with the given fields.
+    /// fields: Vec<(field_name, field_type)>
+    fn render_equals_method(&self, class_name: &str, fields: &[(String, String)], indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut output = String::new();
+
+        writeln!(&mut output, "{}override def equals(other: Any): Boolean = other match {{", indent_str).unwrap();
+        if fields.is_empty() {
+            writeln!(&mut output, "{}  case _: {} => true", indent_str, class_name).unwrap();
+        } else {
+            let field_comparisons: Vec<String> = fields
+                .iter()
+                .map(|(name, _)| format!("this.{} == that.{}", name, name))
+                .collect();
+            writeln!(
+                &mut output,
+                "{}  case that: {} => {}",
+                indent_str,
+                class_name,
+                field_comparisons.join(" && ")
+            ).unwrap();
+        }
+        writeln!(&mut output, "{}  case _ => false", indent_str).unwrap();
+        writeln!(&mut output, "{}}}", indent_str).unwrap();
+
+        output
+    }
+
+    /// Generate hashCode method for a class with the given fields.
+    fn render_hash_code_method(&self, fields: &[(String, String)], indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut output = String::new();
+
+        writeln!(&mut output, "{}override def hashCode(): Int = {{", indent_str).unwrap();
+        if fields.is_empty() {
+            writeln!(&mut output, "{}  1", indent_str).unwrap();
+        } else if fields.len() == 1 {
+            writeln!(&mut output, "{}  {}.hashCode()", indent_str, fields[0].0).unwrap();
+        } else {
+            writeln!(&mut output, "{}  var result = 1", indent_str).unwrap();
+            for (name, _) in fields {
+                writeln!(&mut output, "{}  result = 31 * result + {}.hashCode()", indent_str, name).unwrap();
+            }
+            writeln!(&mut output, "{}  result", indent_str).unwrap();
+        }
+        writeln!(&mut output, "{}}}", indent_str).unwrap();
+
+        output
+    }
+
+    /// Generate toString method for a class.
+    fn render_to_string_method(&self, class_name: &str, field_names: &[String], indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let mut output = String::new();
+
+        write!(&mut output, "{}override def toString(): String = \"{}(\"", indent_str, class_name).unwrap();
+        for (i, name) in field_names.iter().enumerate() {
+            if i > 0 {
+                write!(&mut output, " + \", \"").unwrap();
+            }
+            write!(&mut output, " + {}", name).unwrap();
+        }
+        writeln!(&mut output, " + \")\"").unwrap();
+
+        output
+    }
+
+    /// Generate apply method for a companion object.
+    fn render_apply_method(&self, class_name: &str, fields: &[(String, String)], indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+        let params: Vec<String> = fields
+            .iter()
+            .map(|(name, ty)| format!("{}: {}", name, ty))
+            .collect();
+        let args: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+
+        format!(
+            "{}def apply({}): {} = new {}({})\n",
+            indent_str,
+            params.join(", "),
+            class_name,
+            class_name,
+            args.join(", ")
+        )
+    }
+
+    /// Generate unapply method for a companion object.
+    fn render_unapply_method(&self, class_name: &str, fields: &[(String, String)], indent: usize) -> String {
+        let indent_str = "  ".repeat(indent);
+
+        if fields.is_empty() {
+            // For empty class, unapply returns Boolean
+            format!("{}def unapply(arg: {}): Boolean = true\n", indent_str, class_name)
+        } else if fields.len() == 1 {
+            // For single field, unapply returns Some[T]
+            let (name, ty) = &fields[0];
+            format!(
+                "{}def unapply(arg: {}): Some[{}] = Some(arg.{})\n",
+                indent_str, class_name, ty, name
+            )
+        } else {
+            // For multiple fields, unapply returns Some[(T1, T2, ...)]
+            let types: Vec<String> = fields.iter().map(|(_, ty)| ty.clone()).collect();
+            let args: Vec<String> = fields.iter().map(|(name, _)| format!("arg.{}", name)).collect();
+            format!(
+                "{}def unapply(arg: {}): Some[({})] = Some(({}))\n",
+                indent_str, class_name, types.join(", "), args.join(", ")
+            )
+        }
+    }
+
     /// Render a typedef (record, variant, enum, flags, etc.) to Scala code.
     pub fn render_typedef(&mut self, resolve: &Resolve, id: TypeId) -> String {
         let ty = &resolve.types[id];
@@ -273,7 +384,7 @@ impl ScalaContext {
         }
     }
 
-    /// Render a record type as a Scala case class.
+    /// Render a record type as a Scala class with companion object.
     fn render_record(&mut self, name: &str, record: &Record, resolve: &Resolve, type_docs: &Docs) -> String {
         let mut output = String::new();
 
@@ -283,23 +394,50 @@ impl ScalaContext {
             write!(&mut output, "{}", docs).unwrap();
         }
 
-        writeln!(&mut output, "{}", annotations::component_record()).unwrap();
-        write!(&mut output, "final case class {}(", name).unwrap();
+        // Collect field information
+        let fields: Vec<(String, String)> = record
+            .fields
+            .iter()
+            .map(|field| {
+                let field_name = self.to_camel_case(&field.name);
+                let field_type = self.render_type(resolve, &field.ty);
+                (field_name, field_type)
+            })
+            .collect();
 
-        for (i, field) in record.fields.iter().enumerate() {
+        // Generate class declaration
+        writeln!(&mut output, "{}", annotations::component_record()).unwrap();
+        write!(&mut output, "final class {}(", name).unwrap();
+        for (i, (field_name, field_type)) in fields.iter().enumerate() {
             if i > 0 {
                 write!(&mut output, ", ").unwrap();
             }
-            let field_name = self.to_camel_case(&field.name);
-            let field_type = self.render_type(resolve, &field.ty);
-            write!(&mut output, "{}: {}", field_name, field_type).unwrap();
+            write!(&mut output, "val {}: {}", field_name, field_type).unwrap();
+        }
+        writeln!(&mut output, ") {{").unwrap();
+
+        // Generate helper methods
+        let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+        write!(&mut output, "{}", self.render_equals_method(name, &fields, 1)).unwrap();
+        write!(&mut output, "{}", self.render_hash_code_method(&fields, 1)).unwrap();
+        write!(&mut output, "{}", self.render_to_string_method(name, &field_names, 1)).unwrap();
+
+        writeln!(&mut output, "}}").unwrap();
+
+        // Generate companion object
+        writeln!(&mut output, "object {} {{", name).unwrap();
+        write!(&mut output, "{}", self.render_apply_method(name, &fields, 1)).unwrap();
+
+        if self.opts.generate_unapply {
+            write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
         }
 
-        writeln!(&mut output, ")").unwrap();
+        writeln!(&mut output, "}}").unwrap();
+
         output
     }
 
-    /// Render a variant type as a Scala sealed trait with case classes.
+    /// Render a variant type as a Scala sealed trait with classes/objects.
     fn render_variant(&mut self, name: &str, variant: &Variant, resolve: &Resolve, type_docs: &Docs) -> String {
         let mut output = String::new();
 
@@ -318,15 +456,34 @@ impl ScalaContext {
             match &case.ty {
                 Some(ty) => {
                     let case_type = self.render_type(resolve, ty);
+                    let fields = vec![("value".to_string(), case_type.clone())];
+
+                    // Generate class with payload
                     writeln!(
                         &mut output,
-                        "  final case class {}(value: {}) extends {}",
+                        "  final class {}(val value: {}) extends {} {{",
                         case_name, case_type, name
-                    )
-                    .unwrap();
+                    ).unwrap();
+                    write!(&mut output, "{}", self.render_equals_method(&case_name, &fields, 2)).unwrap();
+                    write!(&mut output, "{}", self.render_hash_code_method(&fields, 2)).unwrap();
+                    write!(&mut output, "{}", self.render_to_string_method(&case_name, &["value".to_string()], 2)).unwrap();
+                    writeln!(&mut output, "  }}").unwrap();
+
+                    // Generate companion object
+                    writeln!(&mut output, "  object {} {{", case_name).unwrap();
+                    write!(&mut output, "{}", self.render_apply_method(&case_name, &fields, 2)).unwrap();
+
+                    if self.opts.generate_unapply {
+                        write!(&mut output, "{}", self.render_unapply_method(&case_name, &fields, 2)).unwrap();
+                    }
+
+                    writeln!(&mut output, "  }}").unwrap();
                 }
                 None => {
-                    writeln!(&mut output, "  case object {} extends {}", case_name, name).unwrap();
+                    // Generate object without payload
+                    writeln!(&mut output, "  object {} extends {} {{", case_name, name).unwrap();
+                    writeln!(&mut output, "    override def toString(): String = \"{}\"", case_name).unwrap();
+                    writeln!(&mut output, "  }}").unwrap();
                 }
             }
         }
@@ -335,7 +492,7 @@ impl ScalaContext {
         output
     }
 
-    /// Render an enum type as a Scala sealed trait with case objects.
+    /// Render an enum type as a Scala sealed trait with objects.
     fn render_enum(&mut self, name: &str, enum_: &Enum, type_docs: &Docs) -> String {
         let mut output = String::new();
 
@@ -351,14 +508,16 @@ impl ScalaContext {
 
         for case in &enum_.cases {
             let case_name = self.to_pascal_case(&case.name);
-            writeln!(&mut output, "  case object {} extends {}", case_name, name).unwrap();
+            writeln!(&mut output, "  object {} extends {} {{", case_name, name).unwrap();
+            writeln!(&mut output, "    override def toString(): String = \"{}\"", case_name).unwrap();
+            writeln!(&mut output, "  }}").unwrap();
         }
 
         writeln!(&mut output, "}}").unwrap();
         output
     }
 
-    /// Render a flags type as a Scala case class with bitwise operators.
+    /// Render a flags type as a Scala class with bitwise operators.
     fn render_flags(&mut self, name: &str, flags: &Flags, type_docs: &Docs) -> String {
         let mut output = String::new();
 
@@ -374,38 +533,54 @@ impl ScalaContext {
             annotations::component_flags(flags.flags.len())
         )
         .unwrap();
-        writeln!(&mut output, "final case class {}(value: Int) {{", name).unwrap();
+        writeln!(&mut output, "final class {}(val value: Int) {{", name).unwrap();
+
+        // Bitwise operators
         writeln!(
             &mut output,
-            "  def |(other: {}): {} = {}(value | other.value)",
+            "  def |(other: {}): {} = new {}(value | other.value)",
             name, name, name
         )
         .unwrap();
         writeln!(
             &mut output,
-            "  def &(other: {}): {} = {}(value & other.value)",
+            "  def &(other: {}): {} = new {}(value & other.value)",
             name, name, name
         )
         .unwrap();
         writeln!(
             &mut output,
-            "  def ^(other: {}): {} = {}(value ^ other.value)",
+            "  def ^(other: {}): {} = new {}(value ^ other.value)",
             name, name, name
         )
         .unwrap();
-        writeln!(&mut output, "  def unary_~ : {} = {}(~value)", name, name).unwrap();
+        writeln!(&mut output, "  def unary_~ : {} = new {}(~value)", name, name).unwrap();
         writeln!(
             &mut output,
             "  def contains(other: {}): Boolean = (value & other.value) == other.value",
             name
         )
         .unwrap();
+
+        // Helper methods
+        let fields = vec![("value".to_string(), "Int".to_string())];
+        write!(&mut output, "{}", self.render_equals_method(name, &fields, 1)).unwrap();
+        write!(&mut output, "{}", self.render_hash_code_method(&fields, 1)).unwrap();
+        write!(&mut output, "{}", self.render_to_string_method(name, &["value".to_string()], 1)).unwrap();
+
         writeln!(&mut output, "}}").unwrap();
 
+        // Companion object
         writeln!(&mut output, "object {} {{", name).unwrap();
+        write!(&mut output, "{}", self.render_apply_method(name, &fields, 1)).unwrap();
+
+        if self.opts.generate_unapply {
+            write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
+        }
+
         for (i, flag) in flags.flags.iter().enumerate() {
             let flag_name = self.to_camel_case(&flag.name);
-            writeln!(&mut output, "  val {} = {}(1 << {})", flag_name, name, i).unwrap();
+            writeln!(&mut output, "  val {} = new {}(1 << {})", flag_name, name, i).unwrap();
         }
         writeln!(&mut output, "}}").unwrap();
 

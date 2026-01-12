@@ -6,6 +6,7 @@ fn test_primitive_types() {
     let mut ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     // Test with fully qualified names
@@ -41,6 +42,7 @@ fn test_keyword_escaping() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     assert_eq!(ctx.escape_keyword("type"), "`type`");
@@ -54,6 +56,7 @@ fn test_name_conversions() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     assert_eq!(ctx.to_camel_case("kebab-case-name"), "kebabCaseName");
@@ -74,6 +77,7 @@ fn test_render_function_import() {
     let mut ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let resolve = Resolve::default();
@@ -106,6 +110,7 @@ fn test_render_function_export() {
     let mut ctx = ScalaContext::new(&Opts {
         base_package: "test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let resolve = Resolve::default();
