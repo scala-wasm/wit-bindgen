@@ -9,6 +9,7 @@ fn generate_scala(wit: &str) -> Files {
     let opts = Opts {
         base_package: "com.example.test".to_string(),
         binding_root: None,
+        generate_unapply: false,
     };
     let mut generator = opts.build();
     let mut files = Files::default();

@@ -6,6 +6,7 @@ fn test_get_world_package_path_import() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "com.example".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let path = get_world_package_path(&ctx, true);
@@ -17,6 +18,7 @@ fn test_get_world_package_path_export() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "com.example".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let path = get_world_package_path(&ctx, false);
@@ -28,6 +30,7 @@ fn test_get_world_file_path_import() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "com.example".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let path = get_world_file_path(&ctx, true);
@@ -39,6 +42,7 @@ fn test_get_world_file_path_export() {
     let ctx = ScalaContext::new(&Opts {
         base_package: "com.example".to_string(),
         binding_root: None,
+        generate_unapply: false,
     });
 
     let path = get_world_file_path(&ctx, false);

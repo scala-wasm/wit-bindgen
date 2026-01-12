@@ -427,7 +427,11 @@ impl ScalaContext {
         // Generate companion object
         writeln!(&mut output, "object {} {{", name).unwrap();
         write!(&mut output, "{}", self.render_apply_method(name, &fields, 1)).unwrap();
-        write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
+
+        if self.opts.generate_unapply {
+            write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
+        }
+
         writeln!(&mut output, "}}").unwrap();
 
         output
@@ -468,7 +472,11 @@ impl ScalaContext {
                     // Generate companion object
                     writeln!(&mut output, "  object {} {{", case_name).unwrap();
                     write!(&mut output, "{}", self.render_apply_method(&case_name, &fields, 2)).unwrap();
-                    write!(&mut output, "{}", self.render_unapply_method(&case_name, &fields, 2)).unwrap();
+
+                    if self.opts.generate_unapply {
+                        write!(&mut output, "{}", self.render_unapply_method(&case_name, &fields, 2)).unwrap();
+                    }
+
                     writeln!(&mut output, "  }}").unwrap();
                 }
                 None => {
@@ -565,7 +573,11 @@ impl ScalaContext {
         // Companion object
         writeln!(&mut output, "object {} {{", name).unwrap();
         write!(&mut output, "{}", self.render_apply_method(name, &fields, 1)).unwrap();
-        write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
+
+        if self.opts.generate_unapply {
+            write!(&mut output, "{}", self.render_unapply_method(name, &fields, 1)).unwrap();
+        }
+
         for (i, flag) in flags.flags.iter().enumerate() {
             let flag_name = self.to_camel_case(&flag.name);
             writeln!(&mut output, "  val {} = new {}(1 << {})", flag_name, name, i).unwrap();
