@@ -1,6 +1,6 @@
 use crate::{Opts, annotations};
 use heck::{ToLowerCamelCase, ToPascalCase, ToSnakeCase};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use wit_bindgen_core::wit_parser::*;
 
@@ -55,6 +55,11 @@ pub struct ScalaContext {
     keywords: ScalaKeywords,
     /// Current interface being rendered (for cross-interface type references)
     current_interface: Option<InterfaceId>,
+    /// WIT interface name → external Scala package path (for `--with` remapped interfaces)
+    with_map: HashMap<String, String>,
+    /// When true, even same-interface types resolve through `with_map`.
+    /// Used when rendering export-trait-only for a remapped interface.
+    force_external_for_current: bool,
 }
 
 impl ScalaContext {
@@ -63,7 +68,19 @@ impl ScalaContext {
             opts: opts.clone(),
             keywords: ScalaKeywords::new(),
             current_interface: None,
+            with_map: HashMap::new(),
+            force_external_for_current: false,
         }
+    }
+
+    /// Set the with_map for external interface remapping.
+    pub fn set_with_map(&mut self, with_map: HashMap<String, String>) {
+        self.with_map = with_map;
+    }
+
+    /// Set whether the current interface's own types should resolve through `with_map`.
+    pub fn set_force_external_for_current(&mut self, force: bool) {
+        self.force_external_for_current = force;
     }
 
     /// Set the current interface being rendered (for cross-interface type references).
@@ -71,16 +88,75 @@ impl ScalaContext {
         self.current_interface = interface_id;
     }
 
+    /// Build the WIT interface key (e.g., `ns:pkg/iface@ver`) for an InterfaceId.
+    fn build_wit_interface_key(&self, resolve: &Resolve, interface_id: InterfaceId) -> Option<String> {
+        let interface = &resolve.interfaces[interface_id];
+        let interface_name = interface.name.as_ref()?;
+        let package_id = interface.package?;
+        let package = &resolve.packages[package_id];
+        let pkg_name = &package.name;
+        if let Some(version) = &pkg_name.version {
+            Some(format!(
+                "{}:{}/{}@{}",
+                pkg_name.namespace, pkg_name.name, interface_name, version
+            ))
+        } else {
+            Some(format!(
+                "{}:{}/{}",
+                pkg_name.namespace, pkg_name.name, interface_name
+            ))
+        }
+    }
+
+    /// Look up whether an interface has been remapped to an external Scala package.
+    ///
+    /// Tries matching in order: exact → version-stripped → package-level.
+    /// For package-level matches, the interface name is appended as a snake_case segment.
+    fn get_remapped_path(&self, resolve: &Resolve, interface_id: InterfaceId) -> Option<String> {
+        let key = self.build_wit_interface_key(resolve, interface_id)?;
+        let interface = &resolve.interfaces[interface_id];
+        let interface_name = interface.name.as_ref()?;
+
+        // Exact match (e.g., "wasi:cli/environment@0.2.0")
+        if let Some(path) = self.with_map.get(&key) {
+            return Some(path.clone());
+        }
+        // Version-stripped match (e.g., "wasi:cli/environment")
+        if let Some(stripped) = crate::strip_version(&key) {
+            if let Some(path) = self.with_map.get(stripped) {
+                return Some(path.clone());
+            }
+        }
+        // Package-level match (e.g., "wasi:cli") — append interface name
+        if let Some(pkg) = crate::strip_interface(&key) {
+            if let Some(path) = self.with_map.get(pkg) {
+                return Some(format!("{}.{}", path, self.to_snake_case(interface_name)));
+            }
+        }
+        None
+    }
+
     /// Generate fully qualified package path for a type from another interface.
+    ///
+    /// When a type comes from a remapped interface (via `--with`), resolves to
+    /// `external.package.path.TypeName` instead of the generated path.
     fn get_qualified_type_name(&self, resolve: &Resolve, type_id: TypeId, type_name: &str) -> String {
         let ty = &resolve.types[type_id];
 
-        // Check if this type is from a different interface
+        // Check if this type is from a different interface (or force_external_for_current)
         if let TypeOwner::Interface(type_interface_id) = ty.owner {
-            // If we're in an interface and the type is from a different interface, qualify it
-            if let Some(current_interface_id) = self.current_interface {
-                if type_interface_id != current_interface_id {
-                    // Type is from a different interface - need fully qualified name
+            let is_cross_interface = self
+                .current_interface
+                .is_some_and(|cid| cid != type_interface_id);
+
+            if is_cross_interface || self.force_external_for_current {
+                // Check if the type's interface has been remapped to an external package
+                if let Some(external_path) = self.get_remapped_path(resolve, type_interface_id) {
+                    return format!("{}.{}", external_path, self.to_pascal_case(type_name));
+                }
+
+                // Not remapped — use existing generated path logic for cross-interface refs
+                if is_cross_interface {
                     let type_interface = &resolve.interfaces[type_interface_id];
                     let interface_name = type_interface.name.as_ref().expect("Interface must have a name");
 
@@ -88,7 +164,6 @@ impl ScalaContext {
                         let package = &resolve.packages[package_id];
                         let pkg_name = &package.name;
 
-                        // Build the fully qualified path
                         let mut segments = self.base_package_segments();
                         segments.push(self.to_snake_case(&pkg_name.namespace));
                         segments.push(self.to_snake_case(&pkg_name.name));

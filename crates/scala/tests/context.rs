@@ -7,6 +7,7 @@ fn test_primitive_types() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     // Test with fully qualified names
@@ -43,6 +44,7 @@ fn test_keyword_escaping() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     assert_eq!(ctx.escape_keyword("type"), "`type`");
@@ -57,6 +59,7 @@ fn test_name_conversions() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     assert_eq!(ctx.to_camel_case("kebab-case-name"), "kebabCaseName");
@@ -78,6 +81,7 @@ fn test_render_function_import() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let resolve = Resolve::default();
@@ -111,6 +115,7 @@ fn test_render_function_export() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let resolve = Resolve::default();

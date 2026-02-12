@@ -7,6 +7,7 @@ fn test_get_package_path_import() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_package_path(&ctx, "wasi:io/streams@0.2.0", true);
@@ -19,6 +20,7 @@ fn test_get_package_path_import_kebab() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_package_path(&ctx, "scala-wasm:scala-wasm/foo-bar@0.2.0", true);
@@ -31,6 +33,7 @@ fn test_get_package_path_export() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_package_path(&ctx, "my:app/handler@1.0.0", false);
@@ -43,6 +46,7 @@ fn test_get_interface_file_path_import() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_interface_file_path(&ctx, "wasi:io/streams@0.2.0", "streams", true);
@@ -55,6 +59,7 @@ fn test_get_interface_file_path_export() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_interface_file_path(&ctx, "my:app/handler@1.0.0", "handler", false);
@@ -67,6 +72,7 @@ fn test_get_interface_file_path_with_kebab_case() {
         base_package: "com.example".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_interface_file_path(&ctx, "my-org:my-app/my-handler@1.0.0", "my-handler", true);
@@ -79,6 +85,7 @@ fn test_get_package_path_no_version() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let path = get_package_path(&ctx, "example:api/basic", true);

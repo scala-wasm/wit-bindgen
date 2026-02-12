@@ -8,6 +8,7 @@ fn test_render_resource_method() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let mut resolve = Resolve::default();
@@ -49,6 +50,7 @@ fn test_render_resource_constructor() {
         base_package: "test".to_string(),
         binding_root: None,
         generate_unapply: false,
+        with: vec![],
     });
 
     let mut resolve = Resolve::default();

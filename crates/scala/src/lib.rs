@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use wit_bindgen_core::{Files, WorldGenerator, wit_parser::*};
 
 pub mod annotations;
@@ -9,6 +9,63 @@ pub mod resource;
 pub mod world;
 
 pub use context::ScalaContext;
+
+/// Specifies how a `--with` mapping should be handled.
+#[derive(Debug, Clone)]
+pub enum WithOption {
+    /// Remap the interface to an external Scala package path.
+    Path(String),
+    /// Generate the interface normally (explicit opt-in).
+    Generate,
+}
+
+/// Internal enum controlling whether an interface is generated or remapped.
+#[derive(Debug, Clone)]
+enum TypeGeneration {
+    /// Skip generation; types are provided by an external Scala package (path stored in `with_map`).
+    Remap,
+    /// Generate the interface normally.
+    Generate,
+}
+
+/// Parse a `--with` CLI argument of the form `key=value`.
+///
+/// - `key=generate` → `WithOption::Generate`
+/// - `key=scala.package.path` → `WithOption::Path("scala.package.path")`
+#[cfg(feature = "clap")]
+fn parse_with(s: &str) -> std::result::Result<(String, WithOption), String> {
+    let (key, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("expected `key=value` or `key=generate`, got `{}`", s))?;
+    let key = key.trim().to_string();
+    let value = value.trim();
+    if key.is_empty() {
+        return Err("key must not be empty".to_string());
+    }
+    if value == "generate" {
+        Ok((key, WithOption::Generate))
+    } else {
+        Ok((key, WithOption::Path(value.to_string())))
+    }
+}
+
+/// Strip the `@version` suffix from a WIT key.
+///
+/// `"wasi:cli/environment@0.2.0"` → `Some("wasi:cli/environment")`
+/// `"wasi:cli/environment"` → `None`
+pub(crate) fn strip_version(key: &str) -> Option<&str> {
+    key.rfind('@').map(|i| &key[..i])
+}
+
+/// Strip both `/interface` and `@version` from a WIT key, leaving just the package.
+///
+/// `"wasi:cli/environment@0.2.0"` → `Some("wasi:cli")`
+/// `"wasi:cli/environment"` → `Some("wasi:cli")`
+/// `"wasi:cli"` → `None`
+pub(crate) fn strip_interface(key: &str) -> Option<&str> {
+    let without_version = strip_version(key).unwrap_or(key);
+    without_version.rfind('/').map(|i| &without_version[..i])
+}
 
 /// Configuration options for the Scala bindings generator.
 #[derive(Default, Debug, Clone)]
@@ -31,6 +88,18 @@ pub struct Opts {
         require_equals = true,
     ))]
     pub generate_unapply: bool,
+
+    /// Remap WIT interfaces to pre-existing Scala packages or force generation.
+    ///
+    /// Each entry is `key=value` where key is a WIT interface name and value is
+    /// either a Scala package path or the literal `generate`.
+    ///
+    /// Key formats (matched in order of specificity):
+    /// - `wasi:cli/environment@0.2.0` — exact interface + version
+    /// - `wasi:cli/environment` — any version of this interface
+    /// - `wasi:cli` — all interfaces in the package (interface name auto-appended)
+    #[cfg_attr(feature = "clap", arg(long = "with", value_parser = parse_with, value_name = "key=value"))]
+    pub with: Vec<(String, WithOption)>,
 }
 
 impl Opts {
@@ -46,17 +115,90 @@ pub struct Scala {
     exports: HashSet<InterfaceId>,
     world_import_funcs: Vec<(String, Function)>,
     world_export_funcs: Vec<(String, Function)>,
+    with: HashMap<String, TypeGeneration>,
 }
 
 impl Scala {
     fn new(opts: Opts) -> Self {
+        // Build internal with map from CLI options
+        let mut with = HashMap::new();
+        let mut with_map = HashMap::new();
+        for (key, option) in &opts.with {
+            match option {
+                WithOption::Path(path) => {
+                    with.insert(key.clone(), TypeGeneration::Remap);
+                    with_map.insert(key.clone(), path.clone());
+                }
+                WithOption::Generate => {
+                    with.insert(key.clone(), TypeGeneration::Generate);
+                }
+            }
+        }
+
+        let mut context = ScalaContext::new(&opts);
+        context.set_with_map(with_map);
+
         Self {
-            context: ScalaContext::new(&opts),
+            context,
             imports: HashSet::new(),
             exports: HashSet::new(),
             world_import_funcs: Vec::new(),
             world_export_funcs: Vec::new(),
+            with,
         }
+    }
+
+    /// Look up how an interface should be generated. Defaults to `Generate`.
+    ///
+    /// Tries matching in order: exact → version-stripped → package-level.
+    fn get_generation(&self, with_name: &str) -> &TypeGeneration {
+        // Exact match (e.g., "wasi:cli/environment@0.2.0")
+        if let Some(g) = self.with.get(with_name) {
+            return g;
+        }
+        // Version-stripped match (e.g., "wasi:cli/environment")
+        if let Some(stripped) = strip_version(with_name) {
+            if let Some(g) = self.with.get(stripped) {
+                return g;
+            }
+        }
+        // Package-level match (e.g., "wasi:cli")
+        if let Some(pkg) = strip_interface(with_name) {
+            if let Some(g) = self.with.get(pkg) {
+                return g;
+            }
+        }
+        static DEFAULT: TypeGeneration = TypeGeneration::Generate;
+        &DEFAULT
+    }
+
+    /// Build the WIT namespace string for an interface (e.g., `ns:pkg/iface@ver`).
+    fn build_namespace(resolve: &Resolve, name: &WorldKey, id: InterfaceId) -> Result<String> {
+        let interface = &resolve.interfaces[id];
+        let interface_name = interface
+            .name
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Interface must have a name"))?;
+
+        let namespace = if let Some(package_id) = interface.package {
+            let package = &resolve.packages[package_id];
+            let pkg_name = &package.name;
+            if let Some(version) = &pkg_name.version {
+                format!(
+                    "{}:{}/{}@{}",
+                    pkg_name.namespace, pkg_name.name, interface_name, version
+                )
+            } else {
+                format!(
+                    "{}:{}/{}",
+                    pkg_name.namespace, pkg_name.name, interface_name
+                )
+            }
+        } else {
+            resolve.name_world_key(name)
+        };
+
+        Ok(namespace)
     }
 }
 
@@ -74,32 +216,25 @@ impl WorldGenerator for Scala {
     ) -> Result<()> {
         self.imports.insert(id);
 
+        let namespace = Self::build_namespace(resolve, name, id)?;
+        let with_name = resolve.name_world_key(name);
+
+        // Check if this interface is remapped to an external package
+        match self.get_generation(&with_name) {
+            TypeGeneration::Remap => {
+                // Skip generation entirely — types and functions live in external lib
+                return Ok(());
+            }
+            TypeGeneration::Generate => {
+                // Fall through to normal generation
+            }
+        }
+
         let interface = &resolve.interfaces[id];
         let interface_name = interface
             .name
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Interface must have a name"))?;
-
-        // Build namespace string from package info
-        let namespace = if let Some(package_id) = interface.package {
-            let package = &resolve.packages[package_id];
-            let pkg_name = &package.name;
-            // Format: "namespace:name/interface@version"
-            if let Some(version) = &pkg_name.version {
-                format!(
-                    "{}:{}/{}@{}",
-                    pkg_name.namespace, pkg_name.name, interface_name, version
-                )
-            } else {
-                format!(
-                    "{}:{}/{}",
-                    pkg_name.namespace, pkg_name.name, interface_name
-                )
-            }
-        } else {
-            // Fallback to using world key name
-            resolve.name_world_key(name)
-        };
 
         // Generate interface content
         let content = interface::render_interface(
@@ -154,41 +289,37 @@ impl WorldGenerator for Scala {
     ) -> Result<()> {
         self.exports.insert(id);
 
+        let namespace = Self::build_namespace(resolve, name, id)?;
+        let with_name = resolve.name_world_key(name);
+
         let interface = &resolve.interfaces[id];
         let interface_name = interface
             .name
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Interface must have a name"))?;
 
-        // Build namespace string from package info
-        let namespace = if let Some(package_id) = interface.package {
-            let package = &resolve.packages[package_id];
-            let pkg_name = &package.name;
-            // Format: "namespace:name/interface@version"
-            if let Some(version) = &pkg_name.version {
-                format!(
-                    "{}:{}/{}@{}",
-                    pkg_name.namespace, pkg_name.name, interface_name, version
-                )
-            } else {
-                format!(
-                    "{}:{}/{}",
-                    pkg_name.namespace, pkg_name.name, interface_name
+        // Check if this interface is remapped to an external package
+        let content = match self.get_generation(&with_name) {
+            TypeGeneration::Remap => {
+                // Generate trait only (no types) — type refs resolve to external path
+                interface::render_export_trait_only(
+                    &mut self.context,
+                    resolve,
+                    id,
+                    &namespace,
                 )
             }
-        } else {
-            // Fallback to using world key name
-            resolve.name_world_key(name)
+            TypeGeneration::Generate => {
+                // Generate normally
+                interface::render_interface(
+                    &mut self.context,
+                    resolve,
+                    id,
+                    &namespace,
+                    false, // is_import = false for exports
+                )
+            }
         };
-
-        // Generate interface content
-        let content = interface::render_interface(
-            &mut self.context,
-            resolve,
-            id,
-            &namespace,
-            false, // is_import = false for exports
-        );
 
         // Get file path
         let file_path = interface::get_interface_file_path(

@@ -162,6 +162,74 @@ pub fn render_interface(
     output
 }
 
+/// Generate an export file with only the trait (no types or package object).
+///
+/// Used when an interface is remapped via `--with` to an external package.
+/// Types resolve to the external path; only the export trait with function
+/// signatures is generated.
+pub fn render_export_trait_only(
+    ctx: &mut ScalaContext,
+    resolve: &Resolve,
+    interface_id: InterfaceId,
+    namespace: &str,
+) -> String {
+    let interface = &resolve.interfaces[interface_id];
+    let interface_name = interface.name.as_ref().expect("Interface must have a name");
+
+    // Set current interface and force external resolution so own types use with_map
+    ctx.set_current_interface(Some(interface_id));
+    ctx.set_force_external_for_current(true);
+
+    let type_name = ctx.to_pascal_case(interface_name);
+    let mut output = String::new();
+
+    // Package declaration (export path)
+    let package_path = get_package_path(ctx, namespace, false);
+    writeln!(&mut output, "package {}", package_path).unwrap();
+    writeln!(&mut output).unwrap();
+
+    // Export trait only — no package object, no type definitions
+    writeln!(&mut output, "// Export interface").unwrap();
+    writeln!(&mut output, "{}", annotations::component_export_interface()).unwrap();
+    writeln!(&mut output, "trait {} {{", type_name).unwrap();
+    writeln!(&mut output).unwrap();
+
+    // Generate export functions
+    let mut generated_functions = Vec::new();
+    for (func_name, func) in &interface.functions {
+        if matches!(
+            func.kind,
+            FunctionKind::Method(_) | FunctionKind::Constructor(_) | FunctionKind::Static(_)
+        ) {
+            continue;
+        }
+
+        let func_code = ctx.render_function(resolve, func, false, namespace);
+        generated_functions.push((func_name.clone(), func_code));
+    }
+
+    if !generated_functions.is_empty() {
+        writeln!(&mut output, "  // Functions").unwrap();
+        for (_name, func_code) in &generated_functions {
+            for line in func_code.lines() {
+                if line.is_empty() {
+                    writeln!(&mut output).unwrap();
+                } else {
+                    writeln!(&mut output, "  {}", line).unwrap();
+                }
+            }
+            writeln!(&mut output).unwrap();
+        }
+    }
+
+    writeln!(&mut output, "}}").unwrap();
+
+    // Reset force flag
+    ctx.set_force_external_for_current(false);
+
+    output
+}
+
 /// Get the package path for an interface.
 ///
 /// For imports: base.package.namespace.name
