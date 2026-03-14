@@ -748,7 +748,7 @@ impl ScalaContext {
         self.opts
             .base_package
             .split('.')
-            .map(|s| s.to_string())
+            .map(|s| self.to_snake_case(s))
             .collect()
     }
 
