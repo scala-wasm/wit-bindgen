@@ -102,7 +102,7 @@ pub fn render_world(
 
 /// Get the package path for a world.
 pub fn get_world_package_path(ctx: &ScalaContext, is_import: bool) -> String {
-    let mut segments = ctx.base_package_segments();
+    let mut segments = ctx.base_package_segments_translated();
 
     if !is_import {
         segments.push("exports".to_string());
@@ -113,7 +113,7 @@ pub fn get_world_package_path(ctx: &ScalaContext, is_import: bool) -> String {
 
 /// Get the file path for a world file.
 pub fn get_world_file_path(ctx: &ScalaContext, is_import: bool) -> String {
-    let mut segments = ctx.base_package_segments();
+    let mut segments = ctx.base_package_segments_translated();
 
     if !is_import {
         segments.push("exports".to_string());
