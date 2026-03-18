@@ -164,7 +164,7 @@ impl ScalaContext {
                         let package = &resolve.packages[package_id];
                         let pkg_name = &package.name;
 
-                        let mut segments = self.base_package_segments();
+                        let mut segments = self.base_package_segments_translated();
                         segments.push(self.to_snake_case(&pkg_name.namespace));
                         segments.push(self.to_snake_case(&pkg_name.name));
                         segments.push(self.to_snake_case(interface_name));
@@ -744,11 +744,11 @@ impl ScalaContext {
     }
 
     /// Get the base package segments.
-    pub fn base_package_segments(&self) -> Vec<String> {
+    pub fn base_package_segments_translated(&self) -> Vec<String> {
         self.opts
             .base_package
             .split('.')
-            .map(|s| s.to_string())
+            .map(|s| self.to_snake_case(s))
             .collect()
     }
 

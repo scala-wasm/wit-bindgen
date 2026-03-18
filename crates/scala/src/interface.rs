@@ -235,7 +235,7 @@ pub fn render_export_trait_only(
 /// For imports: base.package.namespace.name
 /// For exports: base.package.exports.namespace.name
 pub fn get_package_path(ctx: &ScalaContext, namespace: &str, is_import: bool) -> String {
-    let mut segments = ctx.base_package_segments();
+    let mut segments = ctx.base_package_segments_translated();
 
     if !is_import {
         segments.push("exports".to_string());
@@ -272,7 +272,7 @@ pub fn get_interface_file_path(
     interface_name: &str,
     is_import: bool,
 ) -> String {
-    let mut segments = ctx.base_package_segments();
+    let mut segments = ctx.base_package_segments_translated();
 
     if !is_import {
         segments.push("exports".to_string());
