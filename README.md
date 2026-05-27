@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-cargo install --git https://github.com/scala-wasm/wit-bindgen --branch scala
+cargo install --git https://github.com/scala-wasm/wit-bindgen --tag scala-wasm-wasm.4 wit-bindgen-cli
 ```
 
 ## Usage
