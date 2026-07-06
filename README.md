@@ -1,3 +1,6 @@
+
+This fork is archived in favor of [scala-wasm/wit-bindgen-scala](https://github.com/scala-wasm/wit-bindgen-scala)
+
 # wit-bindgen with scala-wasm binding 
 
 [scala-wasm](https://github.com/scala-wasm/scala-wasm)
